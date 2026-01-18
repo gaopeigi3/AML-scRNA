@@ -14,8 +14,16 @@ options(future.globals.maxSize = 9000 * 1024^2)
 gc()
 setwd('./AML-scRNA')
 aml.BM <- readRDS("./05a-aml-BM-annotated-complete.rds")
+emb <- as.matrix(read.csv("umap_embeddings.csv", row.names = 1))
+aml.BM[["umap"]] <- Seurat::CreateDimReducObject(embeddings = emb, key = "UMAP_", assay = DefaultAssay(aml.BM))
+
 colnames(aml.BM@meta.data)
 str(aml.BM@meta.data)
+
+# aml.BM <- subset(aml.BM, subset = patient != "Pt 1")
+rm_patients <- c("HCBM1", "HCBM2", "HCBM3", "Pt 1", "Pt 4", "Pt 9", "Pt 15")
+aml.BM <- subset(aml.BM, subset = !(patient %in% rm_patients))
+
 table(aml.BM@meta.data$patient)
 
 aml.PB <- readRDS("../data/byproducts/04b-aml-PB-clustered-complete.rds")
@@ -27,8 +35,37 @@ cols <- c("T cells" = "#F8766D", "NK cells" = "#E68613",
           "Prog Mk" = "#00BE67", "CD14 Mono" = "#00C19A",
           "CD16 Mono" = "#00BFC4", "DC" = "#00B8E7",
           "Macrophage" = "#00A9FF", "GMP" = "#8494FF", 
-          "BC1" = "#9F8C76", "BC2" = "brown",
-          "BC3" = "#5A5A5A", "BC4" = "#000050")
+       #    "BC1" = "#9F8C76", "BC2" = "brown",
+       #    "BC3" = "#5A5A5A", "BC4" = "#000050")
+
+  # ===== BC clusters (updated) =====
+  "BC1" = "#C77CFF",  # 浅紫（lavender）
+  "BC2" =  "#F564E3",  # 玫红 / magenta
+  "BC3" = "#E64B35",  # 深粉红 / 深玫红（更深）
+"BC4" = "#F39B7F"   # 浅粉红 / salmon（更浅）
+)
+
+"DNM1L" %in% rownames(aml.BM)
+
+
+LSC <- subset(
+  aml.BM,
+  idents = c("BC1")
+)
+table(LSC@meta.data$cellType)
+
+hc_patients <- c("HCBM1", "HCBM2", "HCBM3")
+aml.HC <- subset(aml.BM, subset = (patient %in% hc_patients))
+HSC <- subset(
+  aml.HC,
+  idents = c("BC1")
+)
+table(HSC@meta.data$cellType)
+
+
+
+
+
 
 cols.PB <- c("T cells" = "#F8766D", "NK cells" = "#E58700",
              "Erythroid" = "#A3A500", "B cells" = "#6BB100",
@@ -97,9 +134,6 @@ ggsave(filename = "../results/graphs/umap-aml-BM-annotated-1-complete.jpeg", wid
        plot = DimPlot(aml.BM, reduction = "umap", label = T, repel = T, raster = F, cols = cols,
                       label.size = 8, pt.size = 1) + NoLegend())
 
-
-emb <- as.matrix(read.csv("umap_embeddings.csv", row.names = 1))
-aml.BM[["umap"]] <- Seurat::CreateDimReducObject(embeddings = emb, key = "UMAP_", assay = DefaultAssay(aml.BM))
 
 saveRDS(aml.BM, "../data/byproducts/05a-aml-BM-annotated-complete.rds", compress = F)
 
