@@ -12,8 +12,12 @@ options(future.globals.maxSize = 9000 * 1024^2)
 
 #Clearing memory:
 gc()
+setwd('./AML-scRNA')
+aml.BM <- readRDS("./05a-aml-BM-annotated-complete.rds")
+colnames(aml.BM@meta.data)
+str(aml.BM@meta.data)
+table(aml.BM@meta.data$patient)
 
-aml.BM <- readRDS("../data/byproducts/04a-aml-BM-clustered-complete.rds")
 aml.PB <- readRDS("../data/byproducts/04b-aml-PB-clustered-complete.rds")
 
 
@@ -93,8 +97,11 @@ ggsave(filename = "../results/graphs/umap-aml-BM-annotated-1-complete.jpeg", wid
        plot = DimPlot(aml.BM, reduction = "umap", label = T, repel = T, raster = F, cols = cols,
                       label.size = 8, pt.size = 1) + NoLegend())
 
-saveRDS(aml.BM, "../data/byproducts/05a-aml-BM-annotated-complete.rds", compress = F)
 
+emb <- as.matrix(read.csv("umap_embeddings.csv", row.names = 1))
+aml.BM[["umap"]] <- Seurat::CreateDimReducObject(embeddings = emb, key = "UMAP_", assay = DefaultAssay(aml.BM))
+
+saveRDS(aml.BM, "../data/byproducts/05a-aml-BM-annotated-complete.rds", compress = F)
 
 
 #Peripheral blood samples:
