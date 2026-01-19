@@ -59,6 +59,13 @@ expr_HSC_cell <- FetchData(
   vars = gene
 ) %>%
   mutate(group = "HSC")
+expr_LSC_all_cell <- rbind(
+  expr_LSC_pre_res_cell,
+  expr_LSC_pre_nres_cell
+) %>%
+  mutate(group = "LSC")
+
+
 
 compare_two_groups <- function(df1, df2, gene, g1_name, g2_name,
                                test = c("wilcox", "t")) {
@@ -121,6 +128,15 @@ res_pre_res_vs_pre_nres <- compare_two_groups(
 )
 res_pre_res_vs_pre_nres
 
+res_LSC_vs_HSC <- compare_two_groups(
+  expr_LSC_all_cell,
+  expr_HSC_cell,
+  gene,
+  g1_name = "LSC",
+  g2_name = "HSC",
+  test = "wilcox"
+)
+res_LSC_vs_HSC
 
 
 
