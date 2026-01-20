@@ -21,7 +21,7 @@ setwd("./AML-scRNA")
 hsc <- readH5AD("adata_HC_HSC.h5ad")
 assayNames(hsc)
 HSC<- as.Seurat(
-  sce,
+  hsc,
   counts = NULL,
   data = "X"
 )
