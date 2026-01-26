@@ -26,6 +26,30 @@ aml.BM <- subset(aml.BM, subset = !(patient %in% rm_patients))
 
 table(aml.BM@meta.data$patient)
 
+
+
+gene <- "DNM1L"   # 换成你的目标基因
+
+p <- FeaturePlot(
+  object = aml.BM,
+  features = gene,
+  reduction = "umap",
+  cols = c("lightgrey", "#d73027"),
+  pt.size = 0.4
+)
+
+
+ggsave(
+  filename = paste0("AML_UMAP_", gene, ".pdf"),
+  plot = p,
+  width = 6,
+  height = 5,
+  dpi = 300
+)
+
+
+
+
 aml.PB <- readRDS("../data/byproducts/04b-aml-PB-clustered-complete.rds")
 
 

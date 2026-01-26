@@ -8,13 +8,14 @@ library(Matrix)
 # library(pals)
 library(cowplot)
 library(zellkonverter)
+library(pheatmap)
 #Adjusting the limit for allowable R object sizes: 
 options(future.globals.maxSize = 9000 * 1024^2)
 
 #Clearing memory:
 gc()
 setwd('./AML-scRNA')
-aml.BM <- readRDS("./05a-aml-BM-annotated-complete.rds")
+# aml.BM <- readRDS("./05a-aml-BM-annotated-complete.rds")
 
 aml.BM  <- readH5AD("adata_05a_with_embeddings.h5ad")
 assayNames(aml.BM )
@@ -203,51 +204,216 @@ ggsave(
 
 
 
-ggsave(filename = "../results/graphs/umap-aml-BM-annotated-1-complete.jpeg", width = 15, height = 10, dpi = 300,
-       plot = DimPlot(aml.BM, reduction = "umap", label = T, repel = T, raster = F, cols = cols,
-                      label.size = 8, pt.size = 1) + NoLegend())
 
 
-saveRDS(aml.BM, "../data/byproducts/05a-aml-BM-annotated-complete.rds", compress = F)
 
 
-#Peripheral blood samples:
-hc.pb <- read_rds("../data/byproducts/annotated-samples/hc-pb-annotated.rds")
-pt3.post <- read_rds("../data/byproducts/annotated-samples/pt3-post-pb-annotated-complete.rds")
-pt4.pre <- read_rds("../data/byproducts/annotated-samples/pt4-pre-pb-annotated-complete.rds")
-pt6.pre1 <- read_rds("../data/byproducts/annotated-samples/pt6-pre1-pb-annotated-complete.rds")
-pt6.pre2.cd34 <- read_rds("../data/byproducts/annotated-samples/pt6-pre2-cd34-pb-annotated-complete.rds")
-pt7.pre <- read_rds("../data/byproducts/annotated-samples/pt7-pre-pb-annotated-complete.rds")
-pt9.pre <- read_rds("../data/byproducts/annotated-samples/pt9-pre-pb-annotated-complete.rds")
-pt15.pre <- read_rds("../data/byproducts/annotated-samples/pt15-pre-pb-annotated-complete.rds")
-pt15.post <- read_rds("../data/byproducts/annotated-samples/pt15-post-pb-annotated-complete.rds")
-pt16.pre <- read_rds("../data/byproducts/annotated-samples/pt16-pre-pb-annotated-complete.rds")
-pt19.pre <- read_rds("../data/byproducts/annotated-samples/pt19-pre-pb-annotated-complete.rds")
-pt20.pre <- read_rds("../data/byproducts/annotated-samples/pt20-pre-pb-annotated-complete.rds")
-pt21.post <- read_rds("../data/byproducts/annotated-samples/pt21-post-pb-annotated-complete.rds")
-
-blood <- merge(x = hc.pb, y = c(pt3.post[,!grepl("healthy", pt3.post$sample)],
-                               pt4.pre[,!grepl("healthy", pt4.pre$sample)], 
-                               pt6.pre1[,!grepl("healthy", pt6.pre1$sample)],
-                               pt6.pre2.cd34[,!grepl("healthy", pt6.pre2.cd34$sample)],
-                               pt7.pre[,!grepl("healthy", pt7.pre$sample)],
-                               pt9.pre[,!grepl("healthy", pt9.pre$sample)], 
-                               pt15.pre[,!grepl("healthy", pt15.pre$sample)],
-                               pt15.post[,!grepl("healthy", pt15.post$sample)],
-                               pt16.pre[,!grepl("healthy", pt16.pre$sample)],
-                               pt19.pre[,!grepl("healthy", pt19.pre$sample)],
-                               pt20.pre[,!grepl("healthy", pt20.pre$sample)],
-                               pt21.post[,!grepl("healthy", pt21.post$sample)]),
-              merge.data = T, merge.dr = T)
+aml.BM_cd8 <- subset(aml.BM, subset = grepl("^CD8", dcellType))
+aml.BM_cd8$group <- paste(aml.BM_cd8$venetoclax, aml.BM_cd8$treat, sep = "_")
+table(aml.BM_cd8$group)
+Idents(aml.BM_cd8) <- aml.BM_cd8$group
 
 
-aml.PB$cellType <- blood$cellType
-Idents(aml.PB) <- aml.PB$cellType 
+
+run_deg_two_group <- function(seurat_obj, group_col, ident1, ident2, logfc_cut, prefix,
+                              top_n = 50, order_by = "avg_log2FC") {
+  message("Running: ", ident1, " vs ", ident2, " (|log2FC|>", logfc_cut, ")")
+
+  # ---- 仅保留两个组 ----
+  obj_sub <- seurat_obj[, seurat_obj@meta.data[[group_col]] %in% c(ident1, ident2)]
+  Idents(obj_sub) <- obj_sub@meta.data[[group_col]]
+
+  # ---- 差异分析 ----
+  res <- FindMarkers(
+    obj_sub,
+    ident.1 = ident1,
+    ident.2 = ident2,
+    logfc.threshold = 0,
+    min.pct = 0.1
+  )
+
+  # ---- FDR & log2FC 筛选 ----
+  res_filtered <- res %>%
+    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.05)
+
+  if (nrow(res_filtered) == 0) {
+    message("⚠️ No DEGs for ", prefix, " (|log2FC|>", logfc_cut, ")")
+    return(NULL)
+  }
+
+  # ---- 限制展示基因数（例如 top 50）----
+  if (!is.null(top_n)) {
+    res_filtered <- res_filtered %>%
+      arrange(desc(abs(avg_log2FC))) %>%
+      head(top_n)
+  }
+
+  genes_use <- rownames(res_filtered)
+
+  # ---- 提取并标准化表达矩阵 ----
+  mat <- GetAssayData(obj_sub, slot = "data")[genes_use, colnames(obj_sub)]
+  mat_scaled <- t(scale(t(mat)))
+
+  # ---- 注释信息 ----
+  ann_col <- data.frame(Group = obj_sub@meta.data[[group_col]])
+  ann_col$Group <- factor(ann_col$Group, levels = c(ident2, ident1))  # ✅ 修正处
+  rownames(ann_col) <- colnames(obj_sub)
+
+  # ---- 输出文件 ----
+  out_file <- paste0("../results/heatmaps/heatmap_", prefix, "_logfc", logfc_cut, "_top", top_n, ".jpeg")
+
+  # ---- 绘图 ----
+  pheatmap(
+    mat_scaled,
+    annotation_col = ann_col,
+    cluster_cols = FALSE,
+    cluster_rows = TRUE,
+    show_rownames = TRUE,   # ✅ 显示基因名
+    show_colnames = FALSE,
+    border_color = NA,
+    color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+    filename = out_file,
+    width = 6,
+    height = 10
+  )
+
+  message("✅ Saved: ", out_file, " (", nrow(res_filtered), " DEGs plotted)")
+  return(res_filtered)
+}
 
 
-ggsave(filename = "../results/graphs/umap-aml-PB-annotated-0.3-complete.jpeg", width = 15, height = 10, dpi = 300,
-       plot = DimPlot(aml.PB, reduction = "umap", label = T, repel = T, raster = F,
-                      label.size = 8, pt.size = 1, cols = cols.PB) + NoLegend())
+
+
+# 1) post vs pre in nonresponders
+deg_1_1   <- run_deg_two_group (aml.BM_cd8, "group", "nonresponder_post", "nonresponder_pre", 1,   "1_nonres_post_vs_pre")
+deg_1_1p5 <- run_deg_two_group(aml.BM_cd8, "group", "nonresponder_post", "nonresponder_pre", 1.5, "1_nonres_post_vs_pre")
+
+# 2) post vs pre in responders
+deg_2_1   <- run_deg_two_group(aml.BM_cd8, "group", "responder_post", "responder_pre", 1,   "2_res_post_vs_pre")
+deg_2_1p5 <- run_deg_two_group(aml.BM_cd8, "group", "responder_post", "responder_pre", 1.5, "2_res_post_vs_pre")
+
+# 3) post nonresponders vs post responders
+deg_3_1   <- run_deg_two_group(aml.BM_cd8, "group", "nonresponder_post", "responder_post", 1,   "3_post_nonres_vs_res")
+deg_3_1p5 <- run_deg_two_group(aml.BM_cd8, "group", "nonresponder_post", "responder_post", 1.5, "3_post_nonres_vs_res")
+
+# 4) pre nonresponders vs pre responders
+deg_4_1   <- run_deg_two_group(aml.BM_cd8, "group", "nonresponder_pre", "responder_pre", 1,   "4_pre_nonres_vs_res")
+deg_4_1p5 <- run_deg_two_group(aml.BM_cd8, "group", "nonresponder_pre", "responder_pre", 1.5, "4_pre_nonres_vs_res")
+
+
+
+
+
+
+
+aml.BM_cd8 <- subset(aml.BM, subset = grepl("^CD8", dcellType))
+# 设置分组标识（例如 "venetoclax" + "treat" 合并成一个变量）
+aml.BM_cd8$group <- paste(aml.BM_cd8$venetoclax, aml.BM_cd8$treat, sep = "_")
+
+# 查看有哪些组合
+table(aml.BM_cd8$group)
+
+# 1) post vs pre in nonresponders
+deg_1 <- FindMarkers(
+  aml.BM_cd8,
+  ident.1 = "nonresponder_post",
+  ident.2 = "nonresponder_pre",
+  group.by = "group",
+  logfc.threshold = 0, # 我们自己过滤log2FC
+  min.pct = 0.1
+)
+
+# 2) post vs pre in responders
+deg_2 <- FindMarkers(
+  aml.BM_cd8,
+  ident.1 = "responder_post",
+  ident.2 = "responder_pre",
+  group.by = "group"
+)
+
+# 3) post nonresponders vs post responders
+deg_3 <- FindMarkers(
+  aml.BM_cd8,
+  ident.1 = "nonresponder_post",
+  ident.2 = "responder_post",
+  group.by = "group"
+)
+
+# 4) pre nonresponders vs pre responders
+deg_4 <- FindMarkers(
+  aml.BM_cd8,
+  ident.1 = "nonresponder_pre",
+  ident.2 = "responder_pre",
+  group.by = "group"
+)
+
+#(a) 合并结果并筛选基因
+deg_list <- list(
+  post_vs_pre_nonres = deg_1,
+  post_vs_pre_res = deg_2,
+  post_nonres_vs_res = deg_3,
+  pre_nonres_vs_res = deg_4
+)
+
+# 按 log2FC 与 FDR 阈值筛选
+filter_deg <- function(df, logfc_cut) {
+  df %>%
+    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.05)
+}
+
+deg_1_filtered1 <- filter_deg(deg_1, 1)
+deg_1_filtered1p5 <- filter_deg(deg_1, 1.5)
+deg_2_filtered1 <- filter_deg(deg_2, 1)
+deg_2_filtered1p5 <- filter_deg(deg_2, 1.5)
+deg_3_filtered1 <- filter_deg(deg_3, 1)
+deg_3_filtered1p5 <- filter_deg(deg_3, 1.5)
+deg_4_filtered1 <- filter_deg(deg_4, 1)
+deg_4_filtered1p5 <- filter_deg(deg_4, 1.5)
+
+# 提取所有显著基因并合并
+all_genes <- unique(c(
+  rownames(deg_1_filtered1),
+  rownames(deg_2_filtered1),
+  rownames(deg_3_filtered1),
+  rownames(deg_4_filtered1)
+))
+
+#(c) 取表达矩阵并标准化
+mat <- GetAssayData(aml.BM_cd8, slot = "data")[all_genes, ]
+mat_scaled <- t(scale(t(mat)))  # 基因行标准化
+
+
+library(pheatmap)
+
+# 每个细胞的分组信息
+ann_col <- data.frame(group = aml.BM_cd8$group)
+rownames(ann_col) <- colnames(aml.BM_cd8)
+
+# 颜色
+ann_colors <- list(group = c(
+  "responder_pre" = "#4daf4a",
+  "responder_post" = "#984ea3",
+  "nonresponder_pre" = "#377eb8",
+  "nonresponder_post" = "#e41a1c"
+))
+
+pheatmap(
+  mat_scaled,
+  annotation_col = ann_col,
+  annotation_colors = ann_colors,
+  show_rownames = FALSE,
+  show_colnames = FALSE,
+  cluster_cols = TRUE,
+  cluster_rows = TRUE,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+  filename = "../results/graphs/CD8_DEG_heatmap_log2FC1.pdf", # 👈 保存路径
+  width = 10,
+  height = 8
+)
+
+
+
+
 
 
 saveRDS(aml.PB, "../data/byproducts/05b-aml-PB-annotated-complete.rds", compress = F)
