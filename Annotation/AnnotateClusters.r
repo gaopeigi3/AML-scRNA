@@ -21,10 +21,14 @@ colnames(aml.BM@meta.data)
 str(aml.BM@meta.data)
 
 # aml.BM <- subset(aml.BM, subset = patient != "Pt 1")
+hc_patients <- c("HCBM1", "HCBM2", "HCBM3")
+hc.BM <- subset(aml.BM, subset = patient %in% hc_patients)
 rm_patients <- c("HCBM1", "HCBM2", "HCBM3", "Pt 1", "Pt 4", "Pt 9", "Pt 15")
 aml.BM <- subset(aml.BM, subset = !(patient %in% rm_patients))
 
+table(hc.BM@meta.data$patient)
 table(aml.BM@meta.data$patient)
+
 
 
 
@@ -38,19 +42,33 @@ p <- FeaturePlot(
   pt.size = 0.4
 )
 
+ggsave(
+  filename = paste0("AML_UMAP_", gene, ".tiff"),
+  plot = p,
+  width = 5,
+  height = 5,
+  dpi = 300
+)
+
+
+p <- FeaturePlot(
+  object = hc.BM,
+  features = gene,
+  reduction = "umap",
+  cols = c("lightgrey", "#d73027"),
+  pt.size = 0.4
+)
 
 ggsave(
-  filename = paste0("AML_UMAP_", gene, ".pdf"),
+  filename = paste0("HC_UMAP_", gene, ".tiff"),
   plot = p,
-  width = 6,
+  width = 5,
   height = 5,
   dpi = 300
 )
 
 
 
-
-aml.PB <- readRDS("../data/byproducts/04b-aml-PB-clustered-complete.rds")
 
 
 cols <- c("T cells" = "#F8766D", "NK cells" = "#E68613",
@@ -133,7 +151,7 @@ bone <- merge(x = hc.bm, y = c(pt1.pre[,!grepl("healthy", pt1.pre$sample)],
 aml.BM$cellType <- bone$cellType
 Idents(aml.BM) <- aml.BM$cellType 
 
-ggsave(filename = "../results/graphs/umap-aml-BM-annotated-1-complete.jpeg", width = 15, height = 10, dpi = 300,
+ggsave(filename = "../results/graphs/umap-aml-BM-annotated-1-complete.tiff", width = 10, height = 10, dpi = 300,
        plot = DimPlot(aml.BM, reduction = "umap", label = T, repel = T, raster = F, cols = cols,
                       label.size = 8, pt.size = 1) + NoLegend())
 

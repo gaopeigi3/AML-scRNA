@@ -416,6 +416,429 @@ pheatmap(
 
 
 
+
+
+
+
+
+
+
+
+# conda activate scRNA_R
+
+library(Seurat)
+library(ggplot2)
+# library(tidyverse)
+library(patchwork)
+library(Matrix)
+# library(pals)
+library(cowplot)
+library(zellkonverter)
+library(pheatmap)
+#Adjusting the limit for allowable R object sizes: 
+options(future.globals.maxSize = 9000 * 1024^2)
+
+#Clearing memory:
+gc()
+setwd('./AML-scRNA')
+# aml.BM <- readRDS("./05a-aml-BM-annotated-complete.rds")
+
+aml.BM  <- readH5AD("adata_05a_with_embeddings.h5ad")
+
+aml.BM <- as.Seurat(
+  aml.BM,
+  counts = NULL,
+  data = "X"
+)
+# assayNames(aml.BM)
+
+emb <- as.matrix(read.csv("umap_embeddings.csv", row.names = 1))
+aml.BM[["umap"]] <- Seurat::CreateDimReducObject(embeddings = emb, key = "UMAP_", assay = DefaultAssay(aml.BM))
+
+rm_patients <- c("HCBM1", "HCBM2", "HCBM3")
+aml.BM <- subset(aml.BM, subset = !(patient %in% rm_patients))
+table(aml.BM@meta.data$patient)
+table(aml.BM@meta.data$dcellType)
+
+# 先确保是字符，不要直接在 factor 上 ifelse
+aml.BM@meta.data$dcellType2 <- as.character(aml.BM@meta.data$dcellType)
+
+aml.BM@meta.data$dcellType2[aml.BM@meta.data$dcellType2 %in% c("BC1","BC2","BC3","BC4")] <- "BC (blast clusters)"
+aml.BM@meta.data$dcellType2[aml.BM@meta.data$dcellType2 %in% c("CD14 Mono","CD16 Mono")] <- "Mono"
+
+# 最后再转回 factor（可选）
+aml.BM@meta.data$dcellType2 <- factor(aml.BM@meta.data$dcellType2)
+
+table(aml.BM@meta.data$dcellType2)
+
+
+
+aml.BM_responder <- subset(aml.BM, subset = venetoclax == "responder")
+aml.BM_nonresponder <- subset(aml.BM, subset = venetoclax == "nonresponder")
+aml.BM_responder_pre <- subset(aml.BM, subset = venetoclax == "responder" & treat == "pre")
+aml.BM_nonresponder_pre <- subset(aml.BM, subset = venetoclax == "nonresponder" & treat == "pre")
+aml.BM_responder_post <- subset(aml.BM, subset = venetoclax == "responder" & treat == "post")
+aml.BM_nonresponder_post <- subset(aml.BM, subset = venetoclax == "nonresponder" & treat == "post")
+
+
+cols <- c(
+  # ---- CD4 / CD8 T cells ----
+  "CD4"            = "#8dd3c7",
+  "CD8 CTL"        = "#fb8072",
+  "CD8 Ex"         = "#b30000",
+  "CD8 Naive"      = "#fdbb84",
+  "CD8 Mem"        = "#e34a33",
+  "CD8 EM"         = "#f16913",
+
+  # ---- B cells ----
+  "B cells"        = "#80b1d3",
+  "pre B"          = "#08306b",
+  "Plasma"         = "#1c9099",
+
+  # ---- NK ----
+  "NK"             = "#fccde5",
+
+  # ---- Progenitors / Myeloid ----
+  "Prog Mk"        = "#fdb462",
+  "GMP"            = "#88419d",
+  "Mono"      = "#9e9ac8",
+  "Macrophage"     = "#ffed6f",
+
+  # ---- DC ----
+  "DC"             = "#b3de69",
+
+  # ---- Erythroid ----
+  "Late Erythroid" = "#969696",
+
+  # ---- AML-related BC clusters ----
+  "BC (blast clusters)" = "#b30000" 
+)
+
+
+
+
+
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_responder_pre.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_responder_pre,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = TRUE,
+    repel = TRUE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_responder_pre_nolabel.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_responder_pre,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = FALSE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_nonresponder_pre.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_nonresponder_pre,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = TRUE,
+    repel = TRUE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_nonresponder_pre_nolabel.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_nonresponder_pre,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = FALSE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_responder_post.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_responder_post,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = TRUE,
+    repel = TRUE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_responder_post_nolabel.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_responder_post,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = FALSE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_nonresponder_post.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_nonresponder_post,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = TRUE,
+    repel = TRUE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+ggsave(
+  filename = "../results/graphs/umap-aml-BM_nonresponder_post_nolabel.pdf",
+  width = 10, height = 10, dpi = 300,
+  plot = DimPlot(
+    aml.BM_nonresponder_post,
+    reduction = "umap",
+    group.by = "dcellType2",   # 👈 使用 dcellType 列
+    label = FALSE,
+    raster = FALSE,
+    cols = cols,
+    label.size = 8,
+    pt.size = 1
+  ) + NoLegend()
+)
+
+
+
+
+
+
+# ===============================
+# Requirement (①): Barplot + "values for each item"
+#  - produce a table with n and freq (%)
+#  - save CSV
+#  - optionally add text labels onto bars for editing/inspection
+# ===============================
+make_prop_table <- function(seu_obj, group_label) {
+  df <- seu_obj@meta.data %>%
+    group_by(treat, dcellType2) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(treat) %>%
+    mutate(freq = n / sum(n) * 100) %>%
+    ungroup() %>%
+    mutate(group = group_label)
+
+  return(df)
+}
+
+cell_prop_responder2    <- make_prop_table(aml.BM_responder,    "Responder")
+cell_prop_nonresponder2 <- make_prop_table(aml.BM_nonresponder, "Non-responder")
+
+# ---- Save values (the "each item value" they asked for)
+write.csv(cell_prop_responder2,
+          "../results/tables/celltype_prop_Responder_byTreat_merged.csv",
+          row.names = FALSE)
+
+write.csv(cell_prop_nonresponder2,
+          "../results/tables/celltype_prop_NonResponder_byTreat_merged.csv",
+          row.names = FALSE)
+
+# ---- Barplots (with labels)
+p_bar_res <- ggplot(cell_prop_responder2, aes(x = treat, y = freq, fill = dcellType2)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  # geom_text(
+  #   aes(label = sprintf("%.1f", freq)),
+  #   position = position_stack(vjust = 0.5),
+  #   size = 3
+  # ) +
+  scale_fill_manual(values = cols, drop = FALS②E) +
+  theme_bw(base_size = 13) +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5),
+    axis.title = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Cell proportion (%)") +
+  ggtitle("Cell type composition by treatment (Responders; merged BC/Mono)")
+
+ggsave(
+  "../results/graphs/barplot_Responders_merged.pdf",
+  width = 7, height = 4.5, dpi = 600,
+  plot = p_bar_res
+)
+
+p_bar_nres <- ggplot(cell_prop_nonresponder2, aes(x = treat, y = freq, fill = dcellType2)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  # geom_text(
+  #   aes(label = sprintf("%.1f", freq)),
+  #   position = position_stack(vjust = 0.5),
+  #   size = 3
+  # ) +
+  scale_fill_manual(values = cols, drop = FALSE) +
+  theme_bw(base_size = 13) +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5),
+    axis.title = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Cell proportion (%)") +
+  ggtitle("Cell type composition by treatment (Non-responders; merged BC/Mono)")
+
+ggsave(
+  "../results/graphs/barplot_NonResponders_merged.pdf",
+  width = 7, height = 4.5, dpi = 600,
+  plot = p_bar_nres
+)
+
+# ---- Also save a combined table (optional,便利)
+cell_prop_all2 <- bind_rows(cell_prop_responder2, cell_prop_nonresponder2)
+write.csv(cell_prop_all2,
+          "../results/tables/celltype_prop_ALL_byTreat_merged.csv",
+          row.names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+cell_prop_responder <- aml.BM_responder@meta.data %>%
+  group_by(treat, dcellType) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n) * 100)  # 百分比
+
+ggplot(cell_prop_responder, aes(x = treat, y = freq, fill = dcellType)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  scale_fill_manual(values = cols) +  # 使用你定义的颜色
+  theme_bw(base_size = 13) +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5),
+    axis.title = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Cell proportion (%)") +
+  ggtitle("Cell type composition by treatment (Responders)") 
+
+ggsave(
+  "../results/graphs/barplot_Responders.pdf",
+  width = 6, height = 4, dpi = 600
+)
+
+
+cell_prop_nonresponder <- aml.BM_nonresponder@meta.data %>%
+  group_by(treat, dcellType) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n) * 100)  # 百分比
+
+ggplot(cell_prop_nonresponder, aes(x = treat, y = freq, fill = dcellType)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  scale_fill_manual(values = cols) +  # 使用你定义的颜色
+  theme_bw(base_size = 13) +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5),
+    axis.title = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Cell proportion (%)") +
+  ggtitle("Cell type composition by treatment (Non-responders)") 
+
+ggsave(
+  "../results/graphs/barplot_NonResponders.pdf",
+  width = 6, height = 4, dpi = 600
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 saveRDS(aml.PB, "../data/byproducts/05b-aml-PB-annotated-complete.rds", compress = F)
 
 #################Cluster annotation#############################################
