@@ -214,7 +214,7 @@ ggsave(
 
 
 # conda activate scRNA_R
-
+library(dplyr)  
 library(Seurat)
 library(ggplot2)
 # library(tidyverse)
@@ -574,7 +574,7 @@ run_deg_two_group <- function(seurat_obj, group_col, ident1, ident2, logfc_cut, 
 
   # ---- FDR & log2FC 筛选 ----
   res_filtered <- res %>%
-    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.05)
+    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.01)
 
   if (nrow(res_filtered) == 0) {
     message("⚠️ No DEGs for ", prefix, " (|log2FC|>", logfc_cut, ")")
@@ -619,8 +619,7 @@ run_deg_two_group <- function(seurat_obj, group_col, ident1, ident2, logfc_cut, 
 
   message("✅ Saved: ", out_file, " (", nrow(res_filtered), " DEGs plotted)")
   return(res_filtered)
-}
-
+} 
 
 
 
@@ -663,6 +662,7 @@ deg_1 <- FindMarkers(
   min.pct = 0.1
 )
 
+
 # 2) post vs pre in responders
 deg_2 <- FindMarkers(
   aml.BM_cd8,
@@ -698,7 +698,7 @@ deg_list <- list(
 # 按 log2FC 与 FDR 阈值筛选
 filter_deg <- function(df, logfc_cut) {
   df %>%
-    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.05)
+    filter(abs(avg_log2FC) > logfc_cut & p_val_adj < 0.01)
 }
 
 deg_1_filtered1 <- filter_deg(deg_1, 1)
@@ -718,12 +718,18 @@ all_genes <- unique(c(
   rownames(deg_4_filtered1)
 ))
 
+all_genes1.5 <- unique(c(
+  rownames(deg_1_filtered1p5),
+  rownames(deg_2_filtered1p5),
+  rownames(deg_3_filtered1p5),
+  rownames(deg_4_filtered1p5)
+))
+all_genes1.5 
+
 #(c) 取表达矩阵并标准化
 mat <- GetAssayData(aml.BM_cd8, slot = "data")[all_genes, ]
 mat_scaled <- t(scale(t(mat)))  # 基因行标准化
 
-
-library(pheatmap)
 
 # 每个细胞的分组信息
 ann_col <- data.frame(group = aml.BM_cd8$group)
@@ -752,7 +758,7 @@ pheatmap(
 )
 
 
-
+all_genes 
 
 
 
